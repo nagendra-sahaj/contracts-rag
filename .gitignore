@@ -11,3 +11,5 @@ wheels/
 chroma_db/
 .env
 data/
+.DS_Store
+**/.DS_Store
