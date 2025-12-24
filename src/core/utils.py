@@ -1,22 +1,13 @@
-"""
-Common utilities for RAG project.
-"""
+"""Common utilities for UI/CLI display and retrieval helpers."""
 import os
+from typing import Any, Dict, List
 
-from langchain_huggingface.embeddings import HuggingFaceEmbeddings
-from langchain_chroma.vectorstores import Chroma
-from langchain_classic.chains import RetrievalQA
-from langchain_groq import ChatGroq
+from chromadb import PersistentClient
 
-# Available collections
-COLLECTIONS = [
-    ("Construction_Agreement", "Construction_Agreement.pdf"),
-    ("Construction_Contract", "Construction_Contract-for-Major-Works.pdf"),
-    ("Construction_Contract2", "Construction_Contract-for-Major-Works.pdf"),
-]
+from src.config import COLLECTIONS
+
 
 def get_directory_size(path: str) -> str:
-    """Calculate the total size of a directory in KB or MB."""
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(path):
         for f in filenames:
@@ -30,8 +21,8 @@ def get_directory_size(path: str) -> str:
     else:
         return f"{total_size / (1024 * 1024):.2f} MB"
 
+
 def perform_retrieve(db, query: str, top_k: int) -> list:
-    """Perform retrieval and return list of (doc, score) tuples."""
     try:
         results = db.similarity_search_with_score(query, k=top_k)
     except Exception:
@@ -39,25 +30,21 @@ def perform_retrieve(db, query: str, top_k: int) -> list:
         results = [(d, None) for d in docs]
     return results
 
+
 def _display_collection_info(db, collection_name: str, persist_dir: str, model_name: str, document_name: str = None, subheader_func=None, write_func=None):
-    """Generic display collection info."""
     try:
         count = db._collection.count()
-        size = get_directory_size(persist_dir)
         subheader_func(f"Collection: {collection_name}")
         if document_name:
             write_func(f"Document: {document_name}")
         write_func(f"Number of chunks: {count}")
-        write_func(f"Database size: {size} (shared across all collections)")
         write_func(f"Embedding model: {model_name}")
         write_func(f"Persist directory: {persist_dir}")
-        if hasattr(db._collection, 'metadata') and db._collection.metadata:
-            write_func(f"Collection metadata: {db._collection.metadata}")
     except Exception as e:
         write_func(f"Error retrieving collection info: {e}")
 
+
 def display_results(results: list, subheader_func, write_func):
-    """Generic display results."""
     for i, (doc, score) in enumerate(results, start=1):
         subheader_func(f"Result #{i}")
         if score is not None:
@@ -70,9 +57,33 @@ def display_results(results: list, subheader_func, write_func):
         write_func(snippet)
 
 
-def setup_rag_chain(db, groq_api_key: str, groq_model: str, top_k: int):
-    """Set up RAG chain with Groq LLM."""
-    llm = ChatGroq(model=groq_model, api_key=groq_api_key)
-    retriever = db.as_retriever(search_kwargs={"k": top_k})
-    qa_chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
-    return qa_chain
+def list_collections_with_stats(persist_dir: str, sample_limit: int = 5) -> List[Dict[str, Any]]:
+    """Return collection stats from Chroma persistent client.
+
+    Each entry contains: name, count, sample_sources.
+    """
+    client = PersistentClient(path=persist_dir)
+    results: List[Dict[str, Any]] = []
+    for coll in client.list_collections():
+        info: Dict[str, Any] = {
+            "name": getattr(coll, "name", None),
+            "count": 0,
+            "sample_sources": [],
+        }
+        try:
+            info["count"] = coll.count()
+        except Exception:
+            info["count"] = None
+        try:
+            sample = coll.get(limit=sample_limit, include=["metadatas"])
+            metas = sample.get("metadatas") or []
+            sources = {
+                m.get("source")
+                for m in metas
+                if isinstance(m, dict) and m.get("source")
+            }
+            info["sample_sources"] = sorted(sources)
+        except Exception:
+            info["sample_sources"] = []
+        results.append(info)
+    return results

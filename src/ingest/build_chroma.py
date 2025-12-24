@@ -2,18 +2,7 @@
 """
 Build a Chroma vector store from a PDF using LangChain + HuggingFace embeddings.
 
-This version reads configuration from a .env file and does not accept
-command-line arguments. Set the following variables in the project's `.env`:
-
-- `PDF_PATH` — path to the PDF to ingest
-- `PERSIST_DIR` — directory to store Chroma DB
-- `MODEL_NAME` — huggingface model for embeddings
-- `CHUNK_SIZE` — number of tokens per chunk
-- `CHUNK_OVERLAP` — overlapping tokens between chunks
-- `ENCODING_NAME` — (optional) tokenizer encoding name
-
-Run:
-  python src/build_chroma.py
+Reads configuration from .env via src/config and supports PDF loader selection.
 """
 from __future__ import annotations
 
@@ -34,6 +23,7 @@ from langchain_chroma.vectorstores import Chroma
 
 load_dotenv()
 
+
 def build_chroma_from_pdf(
     pdf_path: str,
     persist_dir: str,
@@ -43,7 +33,6 @@ def build_chroma_from_pdf(
     encoding_name: str = "cl100k_base",
     collection_name: Optional[str] = None,
 ) -> None:
-    # Choose a PDF loader. Some PDFs lose spaces with PyPDF; PDFPlumber/PyMuPDF preserve layout better.
     loader_choice = os.getenv("PDF_LOADER", "pymupdf").strip().lower()
     if loader_choice == "pdfplumber":
         loader = PDFPlumberLoader(pdf_path)
@@ -59,12 +48,10 @@ def build_chroma_from_pdf(
     )
     docs_split = splitter.split_documents(docs)
 
-    # Tag each document with its source PDF filename for easy filtering later
     for doc in docs_split:
         md = dict(doc.metadata or {})
         md["source"] = Path(pdf_path).name
         doc.metadata = md
-
 
     print(f"Created {len(docs_split)} chunks (chunk_size={chunk_size}, overlap={chunk_overlap}).")
 
@@ -101,7 +88,6 @@ def main() -> None:
     encoding_name = os.getenv("ENCODING_NAME", "cl100k_base")
     collection_name = os.getenv("COLLECTION_NAME")
 
-    # default collection name to the PDF stem if not provided
     if not collection_name:
         collection_name = Path(pdf_path).stem
 

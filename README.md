@@ -1,82 +1,75 @@
-# RAG ingestion: PDF -> Chroma (LangChain + HuggingFace embeddings)
+# Contracts RAG: PDF -> Chroma + Retrieval + RAG
 
-This small project shows how to:
+This project ingests contract PDFs into a Chroma vector store (HuggingFace embeddings), provides CLI and Streamlit UIs for retrieval, and supports RAG answers via Groq.
 
-- Read a PDF and split it into token-based chunks (1024 tokens, 100 overlap).
-- Create embeddings using a Hugging Face model.
-- Persist embeddings to a Chroma vector store.
+## Layout
 
-Files:
+- `src/config.py`: Centralized `.env` config and constants
+- `src/core/`: Backend services
+	- `vectorstore.py`: Embeddings/Chroma factories
+	- `rag_service.py`: RAG chain setup (Groq)
+	- `utils.py`: Display-agnostic helpers (retrieve, render results)
+- `src/ingest/`: Ingestion tools
+	- `build_chroma.py`: PDF -> chunks -> embeddings -> Chroma
+- `src/cli/`: Command-line tools
+	- `contracts_cli.py`: Unified CLI (Display, Retrieve, RAG)
+- `src/ui/`: Streamlit UI
+	- `app.py`: “Contract Documents Analysis” app
 
-- [src/build_chroma.py](src/build_chroma.py) — ingestion script.
-- [src/retrieve_chroma.py](src/retrieve_chroma.py) — CLI retrieval script.
-- [src/app.py](src/app.py) — Streamlit UI for retrieving and displaying collection info.
-- [src/rag_chain.py](src/rag_chain.py) — RAG chain with Groq API for generation.
-- [requirements.txt](requirements.txt) — Python dependencies.
+## Quick start
 
-Quick start
-
-1. Create and activate a virtual environment, then install dependencies:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-2. Configure `.env` and run the ingestion script (no CLI args required):
-
-Edit the `.env` file in the project root and set `PDF_PATH`, `PERSIST_DIR`, `MODEL_NAME`, `CHUNK_SIZE`, and `CHUNK_OVERLAP`.
+1) Install dependencies (uv recommended)
 
 ```bash
-python src/build_chroma.py
+uv pip install -r requirements.txt
 ```
 
-3. For CLI retrieval:
+2) Configure `.env`
+
+Set at minimum:
+- `PDF_PATH`, `PERSIST_DIR`, `MODEL_NAME`, `CHUNK_SIZE`, `CHUNK_OVERLAP`
+- `COLLECTION_NAME` (optional; defaults to PDF filename stem)
+- `GROQ_API_KEY` and `GROQ_MODEL_NAME` for RAG
+- `PDF_LOADER` (optional: `pymupdf` | `pdfplumber` | `pypdf`)
+
+3) Ingest a PDF
 
 ```bash
-python src/retrieve_chroma.py
+uv run python src/ingest/build_chroma.py
 ```
 
-4. For Streamlit UI:
+4) Run the Streamlit UI
 
 ```bash
-streamlit run src/app.py
+./run_streamlit.sh
 ```
 
-Then open the URL in your browser to select action and collection.
-
-5. For RAG chain with Groq generation:
-
-Set `GROQ_API_KEY` in `.env`, then:
+If running manually:
 
 ```bash
-python src/rag_chain.py
+PYTHONPATH="$(pwd)" uv run streamlit run src/ui/app.py
 ```
 
-Then select collection and enter queries for AI-generated answers.
+5) CLI tools
 
-- You can ingest multiple PDFs into the same Chroma persistence directory by giving each PDF a `COLLECTION_NAME` value in `.env`. If `COLLECTION_NAME` is blank, the script will default the collection name to the PDF filename (without extension).
-- Each document chunk will have metadata `source` set to the PDF filename, so you can filter or display which PDF produced a result.
+```bash
+uv run python -m src.cli.contracts_cli
+./run_cli.sh
+```
 
-Querying a specific collection (example):
+## Notes
+
+- Each chunk stores `source` metadata with the PDF filename for traceability.
+- Use `PDF_LOADER=pymupdf` for better whitespace preservation with some PDFs.
+- TOP_K, model names, and collections are controlled via `src/config.py` + `.env`.
+
+## Example: query via code
 
 ```python
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import Chroma
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+from langchain_chroma.vectorstores import Chroma
 
 emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-db = Chroma(persist_directory="./chroma_db", embedding_function=emb, collection_name="sample")
+db = Chroma(persist_directory="./chroma_db", embedding_function=emb, collection_name="Construction_Contract")
 docs = db.similarity_search("your query", k=5)
 ```
-
-Options:
-
-- `--model_name` — Hugging Face model for embeddings (default: `sentence-transformers/all-MiniLM-L6-v2`).
-- `--chunk_size` — tokens per chunk (default: 1024).
-- `--chunk_overlap` — overlap tokens between chunks (default: 100).
-
-Notes
-
-- The script uses `RecursiveCharacterTextSplitter` for chunking. Chunk sizes are in characters.
-- Models will be downloaded from Hugging Face hub; ensure you have network access.
