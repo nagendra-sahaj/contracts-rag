@@ -48,11 +48,16 @@ Set at minimum:
 
 3) Ingest a PDF (via script)
 
+Set all required variables in the `.env` file at the project root before running (see step 2).
+
 ```bash
-uv run python src/ingest/build_chroma.py
+uv run src/ingest/build_chroma.py
 ```
 
 4) Run the Streamlit UI
+
+> **Note:** You must ingest at least one PDF (step 3) before launching the Streamlit UI. The UI expects at least one Chroma collection to exist and will throw an error on startup if none are found.
+
 
 ```bash
 ./run_streamlit.sh
